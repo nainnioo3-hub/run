@@ -1,0 +1,1347 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>STRIDE — 러닝 트래킹</title>
+<meta name="description" content="오늘의 목표 거리에 맞춘 코스 추천이 결합된 러닝 기록·트래킹 웹앱">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable.min.css">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<style>
+  :root{
+    --teal:#21afbf; --teal-deep:#1c95a2; --teal-bright:#26c7d9; --tint:#e7f9fb;
+    --ink:#16181d; --ink-soft:#23242a; --body:#434956; --muted:#626677; --muted-blue:#70798f; --faint:#8d94a5;
+    --canvas:#ffffff; --surface:#f1f2f4; --on-primary:#ffffff;
+    --danger:#e5484d; --danger-tint:#fdeceb;
+    --r-sm:8px; --r-md:10px; --r-lg:12px; --r-xl:16px; --r-full:9999px;
+    --shadow-card: rgba(0,0,0,.15) 0px 2px 8px 0px;
+    --shadow-floating: rgba(0,0,0,.16) 0px 2px 6px 0px;
+    --safe-b: env(safe-area-inset-bottom, 0px);
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0;background:var(--surface);color:var(--ink);font-family:'Pretendard Variable',Figtree,-apple-system,sans-serif;-webkit-tap-highlight-color:transparent}
+  body{min-height:100vh}
+  h1,h2,h3,p{margin:0}
+  button{font-family:inherit;cursor:pointer;background:none;border:none;color:inherit}
+  button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible, [tabindex]:focus-visible{outline:2.5px solid var(--teal);outline-offset:2px}
+  input,select{font-family:inherit;color:inherit}
+  .tabular{font-variant-numeric:tabular-nums}
+  .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+  .visually-hidden{display:none}
+  svg.ic{flex:none;display:block}
+
+  #app{max-width:520px;margin:0 auto;min-height:100vh;display:flex;flex-direction:column;position:relative;background:var(--canvas)}
+
+  /* topbar */
+  .topbar{flex:none;display:flex;justify-content:space-between;align-items:center;padding:18px 20px 6px;position:sticky;top:0;background:var(--canvas);z-index:30}
+  .topbar .word{font-size:17px;font-weight:700;letter-spacing:.5px;color:var(--ink)}
+  .streak-badge{display:flex;align-items:center;gap:6px;background:var(--tint);color:var(--teal-deep);border:none;padding:7px 13px;border-radius:var(--r-full);font-size:13px;font-weight:600;min-height:36px}
+
+  /* screens */
+  .screen{display:none;flex:1;flex-direction:column;padding:6px 20px 130px;gap:16px}
+  .screen.active{display:flex}
+  .screen-title{font-size:24px;font-weight:700;letter-spacing:-.2px;margin:8px 0 2px;color:var(--ink)}
+  .section-label{font-size:13px;font-weight:600;color:var(--muted);letter-spacing:.1px}
+
+  /* nav */
+  .navbar{position:fixed;left:0;right:0;bottom:0;display:flex;justify-content:center;padding:0 20px calc(16px + var(--safe-b));pointer-events:none;z-index:40}
+  .navbar-inner{pointer-events:auto;display:flex;gap:4px;background:#fff;border:1px solid #ECEEF1;border-radius:var(--r-full);padding:6px;box-shadow:var(--shadow-floating)}
+  .navbtn{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;min-width:56px;min-height:44px;padding:6px 10px;border-radius:var(--r-full);color:var(--faint);font-size:10px;font-weight:600}
+  .navbtn[aria-current="page"]{color:var(--teal);background:var(--tint)}
+  .navbtn.start{background:var(--teal);color:#fff;min-width:56px}
+
+  /* cards */
+  .card{background:#fff;border:1px solid #ECEEF1;border-radius:var(--r-lg);padding:16px;box-shadow:var(--shadow-card)}
+  .card-flat{background:var(--surface);border-radius:var(--r-lg);padding:18px}
+  .chip{display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:600;padding:4px 10px;border-radius:var(--r-full)}
+  .chip-teal{background:var(--tint);color:var(--teal-deep)}
+  .chip-dim{background:var(--surface);color:var(--muted)}
+
+  .stat3{display:flex;gap:10px}
+  .stat3 .cell{flex:1;background:#fff;border:1px solid #ECEEF1;border-radius:var(--r-md);padding:13px;min-width:0}
+  .stat3 .cell .v{font-size:19px;font-weight:700;color:var(--ink)}
+  .stat3 .cell .l{font-size:11px;color:var(--muted);font-weight:600;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+  .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:44px;padding:12px 20px;border-radius:var(--r-lg);font-weight:600;font-size:15px}
+  .btn-primary{background:var(--teal);color:#fff}
+  .btn-secondary{background:#fff;color:var(--teal-deep);border:1.5px solid var(--teal);}
+  .btn-ghost{background:var(--surface);color:var(--ink-soft)}
+  .btn-danger{background:var(--danger-tint);color:var(--danger)}
+  .btn-block{width:100%}
+  .btn[disabled]{opacity:.45;pointer-events:none}
+
+  .field{display:flex;flex-direction:column;gap:6px}
+  .field label{font-size:13px;font-weight:600;color:var(--muted)}
+  .field input, .field select{background:var(--surface);border:1px solid transparent;border-radius:var(--r-md);padding:12px 14px;font-size:15px;font-weight:600;color:var(--ink);min-height:44px}
+  .field input:focus, .field select:focus{border-color:var(--teal)}
+
+  .list{display:flex;flex-direction:column;gap:10px}
+  .run-row{display:flex;gap:12px;align-items:center;background:#fff;border:1px solid #ECEEF1;border-radius:var(--r-md);padding:12px;text-align:left;width:100%;min-height:44px;box-shadow:var(--shadow-card)}
+  .run-row .thumb{width:52px;height:52px;flex:none;border-radius:var(--r-md);background:var(--surface);position:relative;overflow:hidden;display:flex;align-items:center;justify-content:center;color:var(--faint)}
+  .run-row .mid{flex:1;min-width:0}
+  .run-row .mid .t{font-size:15px;font-weight:600;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .run-row .mid .s{display:flex;align-items:center;gap:4px;font-size:11.5px;color:var(--muted);font-weight:500;margin-top:3px}
+  .run-row .right{text-align:right;flex:none}
+  .run-row .right .d{font-size:16px;font-weight:700;color:var(--ink)}
+  .run-row .right .p{font-size:11px;color:var(--muted);font-weight:600}
+
+  .empty{text-align:center;padding:40px 20px;color:var(--faint);display:flex;flex-direction:column;align-items:center;gap:10px}
+
+  /* chip toggle group */
+  .chip-group{display:flex;gap:8px;flex-wrap:wrap}
+  .chip-toggle{min-height:38px;padding:8px 14px;border-radius:var(--r-full);background:var(--surface);color:var(--body);font-size:13px;font-weight:600}
+  .chip-toggle[aria-pressed="true"]{background:var(--teal);color:#fff}
+
+  /* home hero */
+  .weekly-card{display:flex;align-items:center;gap:16px}
+  .ring-sm{position:relative;width:64px;height:64px;flex:none}
+  .ring-sm svg{position:absolute;inset:0}
+  .ring-sm .pct{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:var(--teal-deep)}
+  .hero-start-btn{display:flex;align-items:center;justify-content:center;gap:10px;width:100%;min-height:64px;background:var(--teal);color:#fff;border-radius:var(--r-lg);font-size:17px;font-weight:700}
+  .hero-start-btn.active{background:var(--ink)}
+
+  /* run screen */
+  .run-topline{display:flex;justify-content:space-between;align-items:center}
+  .live-badge{display:flex;align-items:center;gap:8px;background:var(--tint);padding:6px 12px;border-radius:var(--r-full)}
+  .live-badge.demo{background:var(--surface)}
+  .live-dot{width:8px;height:8px;border-radius:50%;background:var(--teal);animation:pulse 1.4s ease-in-out infinite}
+  .live-badge.demo .live-dot{background:var(--faint);animation:none}
+  @keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.35;transform:scale(.82)}}
+  .run-hero{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;padding:10px 0}
+  .run-hero .dist{font-size:80px;font-weight:700;letter-spacing:-2px;line-height:1;color:var(--ink)}
+  .run-target-pill{margin-top:8px;background:var(--tint);color:var(--teal-deep);padding:6px 14px;border-radius:var(--r-full);font-size:13px;font-weight:600}
+  .run-metrics{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;text-align:center;padding:16px 0;border-top:1px solid #ECEEF1}
+  .run-metrics .v{font-size:23px;font-weight:700;color:var(--ink)}
+  .run-metrics .l{display:flex;align-items:center;justify-content:center;gap:4px;font-size:11px;color:var(--muted);font-weight:600;margin-top:2px}
+  .run-controls{display:flex;align-items:center;justify-content:center;gap:18px;padding:10px 0 6px}
+  .ctrl-sq{width:56px;height:56px;border-radius:var(--r-xl);display:flex;align-items:center;justify-content:center}
+  .ctrl-main{width:76px;height:76px;border-radius:var(--r-xl);background:var(--teal);color:#fff;display:flex;align-items:center;justify-content:center}
+  .ctrl-lock{background:var(--surface);color:var(--body)}
+  .ctrl-stop{background:var(--danger-tint);color:var(--danger)}
+
+  .lock-overlay{position:fixed;inset:0;background:rgba(255,255,255,.96);z-index:60;display:none;flex-direction:column;align-items:center;justify-content:center;gap:22px;text-align:center;padding:20px}
+  .lock-overlay.active{display:flex}
+  .lock-ring{position:relative;width:120px;height:120px}
+  .lock-ring svg{transform:rotate(-90deg)}
+  .lock-btn{position:absolute;inset:10px;display:flex;align-items:center;justify-content:center;border-radius:var(--r-xl);background:var(--surface);color:var(--body);min-width:44px;min-height:44px}
+
+  /* elevation / splits */
+  .splitbars{display:flex;align-items:flex-end;gap:6px;height:72px}
+  .splitbars .col{flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;min-width:0}
+  .splitbars .col .bar{width:100%;border-radius:5px;background:var(--tint)}
+  .splitbars .col .bar.fast{background:var(--teal)}
+  .splitbars .col .num{font-size:9px;font-weight:600;color:var(--muted)}
+
+  .map-hero{position:relative;height:220px;border-radius:var(--r-lg);overflow:hidden;background:var(--surface);border:1px solid #ECEEF1}
+  .map-hero .leaflet-container{background:var(--surface)}
+  .backbtn{position:absolute;top:12px;left:12px;width:38px;height:38px;border-radius:var(--r-lg);background:rgba(255,255,255,.92);display:flex;align-items:center;justify-content:center;color:var(--ink);z-index:500;box-shadow:var(--shadow-floating)}
+  .map-placeholder{height:100%;display:flex;align-items:center;justify-content:center;color:var(--faint);font-size:13px;text-align:center;padding:20px;flex-direction:column;gap:8px}
+
+  .stat4{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;background:#fff;border:1px solid #ECEEF1;border-radius:var(--r-md);padding:14px 6px;box-shadow:var(--shadow-card)}
+  .stat4 .c{text-align:center}
+  .stat4 .c+.c{border-left:1px solid #ECEEF1}
+  .stat4 .v{font-size:16px;font-weight:700;color:var(--ink)}
+  .stat4 .l{font-size:9.5px;color:var(--muted);font-weight:600}
+
+  .target-input-row{display:flex;align-items:baseline;gap:8px;background:var(--surface);border-radius:var(--r-md);padding:14px 16px}
+  .target-input-row input{flex:1;background:transparent;border:none;font-size:32px;font-weight:700;color:var(--ink);width:100%;min-height:auto;padding:0}
+  .target-input-row .unit{font-size:14px;font-weight:600;color:var(--muted)}
+
+  .plan-item{display:flex;align-items:center;gap:12px;min-height:44px}
+  .plan-check{width:26px;height:26px;border-radius:var(--r-sm);flex:none;display:flex;align-items:center;justify-content:center;min-width:26px}
+  .plan-check.done{background:var(--teal);color:#fff}
+  .plan-check.todo{border:2px solid #E2E4E8}
+  .plan-check.today{border:2px solid var(--teal)}
+
+  .course-card{display:flex;flex-direction:column;gap:10px;background:#fff;border:1px solid #ECEEF1;border-radius:var(--r-lg);padding:15px;text-align:left;width:100%;min-height:44px;box-shadow:var(--shadow-card)}
+  .course-card .match{font-size:11px;font-weight:700;color:var(--teal-deep)}
+
+  .toast{position:fixed;left:50%;bottom:110px;transform:translateX(-50%);background:var(--ink);color:#fff;padding:12px 18px;border-radius:var(--r-lg);font-size:13.5px;font-weight:600;z-index:80;max-width:88%;text-align:center;box-shadow:var(--shadow-floating);opacity:0;pointer-events:none;transition:opacity .2s,transform .2s}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(-6px)}
+
+  .modal-backdrop{position:fixed;inset:0;background:rgba(22,24,29,.45);z-index:70;display:none;align-items:flex-end;justify-content:center}
+  .modal-backdrop.active{display:flex}
+  .modal-sheet{width:100%;max-width:520px;background:#fff;border-radius:var(--r-xl) var(--r-xl) 0 0;padding:22px 20px calc(28px + var(--safe-b));display:flex;flex-direction:column;gap:14px;max-height:88vh;overflow:auto}
+  .modal-head{display:flex;justify-content:space-between;align-items:center}
+  .modal-close{width:32px;height:32px;border-radius:50%;background:var(--surface);display:flex;align-items:center;justify-content:center;color:var(--body)}
+
+  .leaderboard-row{display:flex;align-items:center;gap:12px;background:#fff;border:1px solid #ECEEF1;border-radius:var(--r-md);padding:11px 14px;min-height:44px;box-shadow:var(--shadow-card)}
+  .leaderboard-row.me{background:var(--tint);border:1.5px solid var(--teal)}
+  .avatar{width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:13px;flex:none}
+
+  a.skip-link{position:absolute;left:-999px;top:0;background:var(--teal);color:#fff;padding:10px 16px;border-radius:var(--r-sm);font-weight:700;z-index:100}
+  a.skip-link:focus{left:12px;top:12px}
+
+  @media (min-width:521px){ #app{border-left:1px solid #ECEEF1;border-right:1px solid #ECEEF1} }
+</style>
+</head>
+<body>
+<a href="#main" class="skip-link">본문으로 건너뛰기</a>
+<div id="app">
+
+  <div class="topbar">
+    <span class="word">STRIDE</span>
+    <div class="streak-badge" id="streakBadge" role="button" tabindex="0"><span id="streakIcon"></span><span id="streakVal">0</span>일 연속</div>
+  </div>
+
+  <div id="live-announcer" class="sr-only" role="status" aria-live="polite"></div>
+
+  <main id="main">
+
+  <!-- ============ HOME ============ -->
+  <section class="screen" id="screen-home" aria-labelledby="home-title">
+    <h1 class="sr-only" id="home-title">홈</h1>
+
+    <div class="card weekly-card">
+      <div class="ring-sm">
+        <svg width="64" height="64" viewBox="0 0 64 64" aria-hidden="true">
+          <circle cx="32" cy="32" r="27" fill="none" stroke="#EDEFF2" stroke-width="8"/>
+          <circle id="homeRingProgress" cx="32" cy="32" r="27" fill="none" stroke="#21afbf" stroke-width="8" stroke-linecap="round" transform="rotate(-90 32 32)"/>
+        </svg>
+        <div class="pct tabular" id="homeRingPct">0%</div>
+      </div>
+      <div style="flex:1;min-width:0">
+        <div class="section-label">이번 주 진행</div>
+        <div class="tabular" style="font-size:16px;font-weight:700;margin-top:3px" id="weekProgressText">0.0 / 0 KM</div>
+      </div>
+    </div>
+
+    <button class="hero-start-btn" id="startBtn" type="button">
+      <span id="heroPlayIcon"></span>
+      <span id="heroCoreLabel">오늘의 러닝 시작</span>
+    </button>
+
+    <div class="stat3">
+      <div class="cell"><div class="v tabular" id="statMonthKm">0.0</div><div class="l">이번 달 KM</div></div>
+      <div class="cell"><div class="v tabular" id="statAvgPace">–'–"</div><div class="l">평균 페이스</div></div>
+      <div class="cell"><div class="v tabular" id="statYearKm">0</div><div class="l">올해 KM</div></div>
+    </div>
+
+    <button class="card" id="homeRecCourseCard" style="text-align:left;width:100%">
+      <div class="section-label" style="color:var(--teal-deep);margin-bottom:10px" id="homeRecLabel">오늘 목표 기반 추천 코스</div>
+      <div id="homeRecCourseBody"></div>
+    </button>
+
+    <button class="btn btn-secondary btn-block" id="homeGoalCta" type="button" style="display:none">오늘 목표 거리를 입력하고 맞춤 코스 받기</button>
+
+    <div>
+      <div class="section-label" style="margin:6px 0 10px">최근 러닝</div>
+      <div class="list" id="homeRecentList"></div>
+    </div>
+  </section>
+
+  <!-- ============ RUN (ACTIVE) ============ -->
+  <section class="screen" id="screen-run" aria-labelledby="run-title">
+    <h1 class="sr-only" id="run-title">러닝 중</h1>
+    <div class="run-topline">
+      <div class="live-badge" id="liveBadge"><span class="live-dot" aria-hidden="true"></span><span style="font-size:12px;font-weight:600;color:var(--teal-deep)" id="gpsStatusText">실시간 · GPS 탐색 중</span></div>
+      <span style="font-size:13px;font-weight:700;color:var(--muted)" id="runCourseLabel">자유 러닝</span>
+    </div>
+    <div class="run-hero">
+      <div class="section-label">거리 · KM</div>
+      <div class="dist tabular" id="runDistance">0.00</div>
+      <div class="run-target-pill" id="runTargetPill" style="display:none"></div>
+    </div>
+    <div class="run-metrics">
+      <div><div class="v tabular" id="runPace">–'–"</div><div class="l">평균 페이스</div></div>
+      <div style="border-left:1px solid #ECEEF1;border-right:1px solid #ECEEF1"><div class="v tabular" id="runTime">00:00</div><div class="l">시간</div></div>
+      <div><div class="v tabular" id="runHr"><span id="hrIcon"></span>–</div><div class="l">심박</div></div>
+    </div>
+    <div class="run-controls">
+      <button class="ctrl-sq ctrl-lock" id="runLockBtn" type="button" aria-label="화면 잠금"></button>
+      <button class="ctrl-main" id="runPauseBtn" type="button" aria-label="일시정지"></button>
+      <button class="ctrl-sq ctrl-stop" id="runStopBtn" type="button" aria-label="종료"></button>
+    </div>
+  </section>
+
+  <!-- ============ RUN DETAIL ============ -->
+  <section class="screen" id="screen-detail" aria-labelledby="detail-title">
+    <h1 class="sr-only" id="detail-title">기록 상세</h1>
+    <div class="map-hero">
+      <button class="backbtn" id="detailBackBtn" type="button" aria-label="뒤로"></button>
+      <div id="detailMap" style="height:100%"></div>
+    </div>
+    <div>
+      <div class="section-label" id="detailDateLabel">–</div>
+      <div style="font-size:19px;font-weight:700;margin-top:3px;color:var(--ink)" id="detailTitleLabel">–</div>
+    </div>
+    <div class="stat4">
+      <div class="c"><div class="v tabular" id="detailKm">0.00</div><div class="l">KM</div></div>
+      <div class="c"><div class="v tabular" id="detailTime">0:00</div><div class="l">시간</div></div>
+      <div class="c"><div class="v tabular" style="color:var(--teal-deep)" id="detailPace">–'–"</div><div class="l">페이스</div></div>
+      <div class="c"><div class="v tabular" id="detailElev">0</div><div class="l">고도 m</div></div>
+    </div>
+    <div class="card" id="detailSplitsCard">
+      <div class="section-label" style="margin-bottom:12px">구간 페이스 · KM</div>
+      <div class="splitbars" id="detailSplits"></div>
+    </div>
+    <div class="card" id="detailElevCard">
+      <div class="section-label" style="margin-bottom:10px" id="detailElevLabel">고도 프로파일</div>
+      <svg width="100%" height="56" viewBox="0 0 300 56" preserveAspectRatio="none" id="detailElevSvg" aria-hidden="true"></svg>
+    </div>
+  </section>
+
+  <!-- ============ HISTORY ============ -->
+  <section class="screen" id="screen-history" aria-labelledby="history-title">
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <h1 class="screen-title" id="history-title">기록</h1>
+      <select id="historyMonthSelect" aria-label="월 선택" style="background:#fff;border:1px solid #ECEEF1;color:var(--ink);padding:8px 12px;border-radius:var(--r-full);font-size:13px;font-weight:600;min-height:44px"></select>
+    </div>
+    <div class="card-flat" style="display:flex;justify-content:space-between">
+      <div><div class="v tabular" style="font-size:24px;font-weight:700;color:var(--ink)" id="histMonthKm">0.0</div><div class="section-label" style="margin-top:2px">이번 달 KM</div></div>
+      <div style="text-align:center"><div class="v tabular" style="font-size:24px;font-weight:700;color:var(--ink)" id="histMonthTime">0:00</div><div class="section-label" style="margin-top:2px">시간</div></div>
+      <div style="text-align:right"><div class="v tabular" style="font-size:24px;font-weight:700;color:var(--teal-deep)" id="histMonthCount">0</div><div class="section-label" style="margin-top:2px">러닝</div></div>
+    </div>
+    <div class="list" id="historyList"></div>
+  </section>
+
+  <!-- ============ GOALS ============ -->
+  <section class="screen" id="screen-goals" aria-labelledby="goals-title">
+    <h1 class="screen-title" id="goals-title">목표</h1>
+
+    <div class="card" style="display:flex;flex-direction:column;gap:14px">
+      <div class="section-label">오늘 목표 거리</div>
+      <div class="target-input-row">
+        <input type="number" id="todayTargetInput" inputmode="decimal" min="0.5" step="0.5" placeholder="0">
+        <span class="unit">KM</span>
+      </div>
+      <div>
+        <div class="section-label" style="margin-bottom:8px">코스 선호</div>
+        <div class="chip-group" id="prefChipGroup" role="group" aria-label="코스 선호"></div>
+      </div>
+      <div>
+        <div class="section-label" style="margin-bottom:8px">오늘 컨디션</div>
+        <div class="chip-group" id="condChipGroup" role="group" aria-label="오늘 컨디션"></div>
+      </div>
+      <button class="btn btn-primary btn-block" id="applyTargetBtn" type="button">코스 추천 받기</button>
+    </div>
+
+    <div>
+      <div class="section-label" style="margin:6px 0 10px">추천 코스</div>
+      <div class="list" id="coursesList"></div>
+    </div>
+
+    <div class="card">
+      <div class="section-label" style="margin-bottom:12px">이번 주 트레이닝 플랜</div>
+      <div class="list" id="planList" style="gap:11px"></div>
+    </div>
+  </section>
+
+  <!-- ============ SOCIAL ============ -->
+  <section class="screen" id="screen-social" aria-labelledby="social-title">
+    <h1 class="screen-title" id="social-title">소셜</h1>
+    <div class="card-flat">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <span class="section-label" style="color:var(--teal-deep)" id="challengeMonthLabel">이번 달 챌린지</span>
+        <span class="chip chip-teal" id="myRankChip">내 순위 #–</span>
+      </div>
+      <div style="font-size:18px;font-weight:700;margin:8px 0 4px;color:var(--ink)">100K 클럽 챌린지</div>
+      <div style="display:flex;align-items:baseline;gap:5px">
+        <span class="tabular" style="font-size:26px;font-weight:700;color:var(--ink)" id="challengeKm">0.0</span>
+        <span style="font-size:13px;font-weight:600;color:var(--muted)">/ 100 KM</span>
+      </div>
+      <div style="height:8px;border-radius:6px;background:#E2E4E8;margin-top:10px;overflow:hidden">
+        <div id="challengeBar" style="width:0%;height:100%;background:var(--teal);border-radius:6px"></div>
+      </div>
+    </div>
+    <div class="section-label">친구 리더보드</div>
+    <div class="list" id="leaderboardList"></div>
+  </section>
+
+  </main>
+
+  <nav class="navbar" aria-label="주요 내비게이션">
+    <div class="navbar-inner">
+      <button class="navbtn" data-screen="home" type="button"><span data-icon="home"></span>홈</button>
+      <button class="navbtn" data-screen="history" type="button"><span data-icon="history"></span>기록</button>
+      <button class="navbtn start" id="navStartBtn" type="button" aria-label="러닝 시작"><span data-icon="play"></span></button>
+      <button class="navbtn" data-screen="goals" type="button"><span data-icon="target"></span>목표</button>
+      <button class="navbtn" data-screen="social" type="button"><span data-icon="users"></span>소셜</button>
+    </div>
+  </nav>
+
+  <!-- lock overlay -->
+  <div class="lock-overlay" id="lockOverlay" role="dialog" aria-modal="true" aria-label="화면 잠김">
+    <div class="lock-ring">
+      <svg width="120" height="120" viewBox="0 0 120 120" aria-hidden="true">
+        <circle cx="60" cy="60" r="52" fill="none" stroke="#EDEFF2" stroke-width="9"/>
+        <circle id="lockRingProgress" cx="60" cy="60" r="52" fill="none" stroke="#21afbf" stroke-width="9" stroke-linecap="round" stroke-dasharray="327" stroke-dashoffset="327" transform="rotate(-90 60 60)"/>
+      </svg>
+      <button class="lock-btn" id="lockHoldBtn" type="button" aria-label="1.5초간 눌러서 잠금 해제"></button>
+    </div>
+    <p style="font-size:14px;font-weight:600;color:var(--muted);max-width:220px">화면이 잠겼습니다.<br>버튼을 1.5초간 눌러 잠금을 해제하세요</p>
+  </div>
+
+  <!-- course preview modal -->
+  <div class="modal-backdrop" id="courseModal">
+    <div class="modal-sheet">
+      <div class="modal-head">
+        <div class="section-label">코스 미리보기</div>
+        <button class="modal-close" id="courseModalClose" type="button" aria-label="닫기"><span data-icon="x"></span></button>
+      </div>
+      <div class="map-hero" style="height:190px"><div id="courseModalMap" style="height:100%"></div></div>
+      <div>
+        <div style="font-size:19px;font-weight:700;color:var(--ink)" id="courseModalName">–</div>
+        <div class="chip-group" style="margin-top:8px" id="courseModalChips"></div>
+      </div>
+      <svg width="100%" height="44" viewBox="0 0 300 44" preserveAspectRatio="none" id="courseModalElevSvg" aria-hidden="true"></svg>
+      <button class="btn btn-primary btn-block" id="courseModalStartBtn" type="button">이 코스로 러닝 시작</button>
+    </div>
+  </div>
+
+  <!-- backup modal -->
+  <div class="modal-backdrop" id="backupModal">
+    <div class="modal-sheet">
+      <div class="modal-head">
+        <div class="section-label">데이터 백업 · 복원</div>
+        <button class="modal-close" id="backupModalCloseX" type="button" aria-label="닫기"><span data-icon="x"></span></button>
+      </div>
+      <p style="font-size:13px;color:var(--muted);line-height:1.5;margin:0">모든 기록·목표·플랜을 엑셀(.xlsx) 파일로 내려받거나, 백업 파일을 업로드해 복원할 수 있습니다.</p>
+      <button class="btn btn-primary btn-block" id="exportBtn" type="button">엑셀로 백업 다운로드</button>
+      <label class="btn btn-ghost btn-block" for="importFile" style="display:flex">엑셀 파일 업로드로 복원</label>
+      <input type="file" id="importFile" accept=".xlsx" class="visually-hidden">
+    </div>
+  </div>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script>
+(function(){
+"use strict";
+
+/* ===================== icon system (no emoji) ===================== */
+const ICON_PATHS = {
+  home: '<path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/><path d="M9.5 21v-6.5h5V21"/>',
+  history: '<circle cx="12" cy="12" r="9"/><path d="M12 7.5v5l3.2 2"/>',
+  target: '<circle cx="12" cy="12" r="8.2"/><circle cx="12" cy="12" r="4.2"/><circle cx="12" cy="12" r=".6" fill="currentColor" stroke="none"/>',
+  users: '<circle cx="9" cy="8.3" r="3"/><path d="M3.2 20c0-3.3 2.6-6 5.8-6s5.8 2.7 5.8 6"/><circle cx="17" cy="9.3" r="2.3"/><path d="M15.3 14.4c2.4.5 4.1 2.6 4.1 5.6"/>',
+  play: '<path d="M7 4.2v15.6l13-7.8z"/>',
+  pause: '<rect x="6" y="5" width="4.2" height="14" rx="1.2"/><rect x="13.8" y="5" width="4.2" height="14" rx="1.2"/>',
+  stop: '<rect x="6" y="6" width="12" height="12" rx="2.5"/>',
+  lock: '<rect x="5" y="10.5" width="14" height="9.5" rx="2.2"/><path d="M7.7 10.5V7.8a4.3 4.3 0 0 1 8.6 0v2.7"/>',
+  heart: '<path d="M12 20.2s-7.3-4.4-9.7-8.7C.6 7.7 2 4 5.7 4c2.1 0 3.5 1.2 4.7 2.8C11.6 5.2 13 4 15.1 4c3.7 0 5.1 3.7 3.4 7.5-2.4 4.3-9.7 8.7-9.7 8.7z"/>',
+  mountain: '<path d="M2.5 19h19L15.2 7.2l-3 4.4-1.7-2.4z"/>',
+  road: '<path d="M4.5 12h3.2M10.9 12h3.2M17.3 12h3.2"/>',
+  flame: '<path d="M12 2.3c.8 2.6-2.4 3.6-2.6 6.6a2.7 2.7 0 0 0 2.6 2.9 2.7 2.7 0 0 0 2.4-4c1.5 1.3 2.2 3 2.2 4.6a4.6 4.6 0 1 1-9.2 0c0-2.4 1.6-4 2.5-5 .2 1.6.8 2 1.1-1.1.1-1.2.4-2.2 1-4z"/>',
+  check: '<path d="M4.5 12.5l5 5L19.5 6.5"/>',
+  'chevron-left': '<path d="M15 5.5 8.3 12l6.7 6.5"/>',
+  'chevron-down': '<path d="M5.5 9l6.5 6.5L18.5 9"/>',
+  inbox: '<path d="M3 8.6 12 4.3l9 4.3"/><path d="M3.3 8.8v9.2c0 .6.5 1 1 1h15.4c.5 0 1-.4 1-1V8.8"/><path d="M3.3 9l6.8 4.8h3.8L20.7 9"/>',
+  'map-pin': '<path d="M12 21s7-6.3 7-11.6A7 7 0 0 0 5 9.4C5 14.7 12 21 12 21z"/><circle cx="12" cy="9.3" r="2.4"/>',
+  x: '<path d="M5.5 5.5l13 13M18.5 5.5l-13 13"/>',
+  activity: '<path d="M3 12h3.5l2-6 4 12 2-6h6.5"/>'
+};
+function icon(name, size, extra){
+  const s = size||20;
+  const body = ICON_PATHS[name] || '';
+  return `<svg class="ic" width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"${extra?` style="${extra}"`:''}>${body}</svg>`;
+}
+function paintIcons(){
+  document.querySelectorAll('[data-icon]').forEach(el=>{
+    if(!el.dataset.painted){ el.innerHTML = icon(el.dataset.icon, el.dataset.size||20); el.dataset.painted='1'; }
+  });
+}
+
+/* ===================== storage & seed data ===================== */
+const LS = {
+  runs:'stride_runs', dailyTargets:'stride_daily_targets', plan:'stride_plan', courses:'stride_courses'
+};
+
+const DEFAULT_COURSES = [
+  {id:'c1', name:'한강 언덕 8K', distanceKm:8.0, elevationGain:124, type:'hill', difficulty:'중급', profile:[0,8,20,34,52,40,60,48,70,55,38,18,4], base:{lat:37.5326,lng:126.9905}},
+  {id:'c2', name:'탄천 평지 5K', distanceKm:5.0, elevationGain:12, type:'flat', difficulty:'입문', profile:[0,3,5,4,6,5,3,4,2,1], base:{lat:37.4110,lng:127.1220}},
+  {id:'c3', name:'남산 순환 템포 8K', distanceKm:8.0, elevationGain:180, type:'hill', difficulty:'상급', profile:[0,14,30,44,66,50,74,58,90,70,44,20,2], base:{lat:37.5512,lng:126.9882}},
+  {id:'c4', name:'올림픽공원 평지 10K', distanceKm:10.0, elevationGain:18, type:'flat', difficulty:'중급', profile:[0,4,6,5,7,6,4,5,3,4,2], base:{lat:37.5209,lng:127.1237}},
+  {id:'c5', name:'회복 조깅 4K', distanceKm:4.0, elevationGain:8, type:'flat', difficulty:'입문', profile:[0,2,3,2,4,3,1], base:{lat:37.5665,lng:126.9780}},
+  {id:'c6', name:'청계천 야간 6K', distanceKm:6.0, elevationGain:10, type:'flat', difficulty:'입문', profile:[0,3,2,4,3,5,3,2], base:{lat:37.5696,lng:126.9784}}
+];
+
+const DEFAULT_FRIENDS = [
+  {name:'이민서', km:92.4, color:'#FF8A3D'},
+  {name:'박준혁', km:81.0, color:'#3DA1CB'},
+  {name:'최유나', km:52.1, color:'#8A6BE0'}
+];
+
+function loadJSON(key, fallback){
+  try{ const v = localStorage.getItem(key); return v ? JSON.parse(v) : fallback; }
+  catch(e){ return fallback; }
+}
+function saveJSON(key, val){ localStorage.setItem(key, JSON.stringify(val)); }
+
+function generateLoopRoute(lat,lng,km){
+  const points=[]; const n=18;
+  const radiusKm = Math.max(0.22, km/(2*Math.PI));
+  for(let i=0;i<=n;i++){
+    const t = (i/n)*Math.PI*2;
+    const wobble = 1 + Math.sin(t*3)*0.16 + Math.cos(t*2)*0.09;
+    const r = radiusKm*wobble;
+    const dLat = (r/111.32)*Math.sin(t);
+    const dLng = (r/(111.32*Math.cos(lat*Math.PI/180)))*Math.cos(t);
+    points.push({lat:+(lat+dLat).toFixed(6), lng:+(lng+dLng).toFixed(6)});
+  }
+  return points;
+}
+function ensureCourseRoutes(list){
+  return list.map(c=>{
+    if(c.route && c.route.length>2) return c;
+    const def = DEFAULT_COURSES.find(d=>d.id===c.id);
+    const base = (def && def.base) || {lat:37.5665+(Math.random()-0.5)*0.05, lng:126.9780+(Math.random()-0.5)*0.05};
+    return {...c, base: c.base||base, route: generateLoopRoute(base.lat, base.lng, c.distanceKm)};
+  });
+}
+
+let state = {
+  runs: loadJSON(LS.runs, []),
+  dailyTargets: loadJSON(LS.dailyTargets, []),
+  plan: loadJSON(LS.plan, {weekKey:null, items:[]}),
+  courses: ensureCourseRoutes(loadJSON(LS.courses, DEFAULT_COURSES)),
+  friends: loadJSON('stride_friends', DEFAULT_FRIENDS)
+};
+function persistRuns(){ saveJSON(LS.runs, state.runs); }
+function persistTargets(){ saveJSON(LS.dailyTargets, state.dailyTargets); }
+function persistPlan(){ saveJSON(LS.plan, state.plan); }
+function persistCourses(){ saveJSON(LS.courses, state.courses); }
+
+/* ===================== helpers ===================== */
+function fmtKm(km){ return (km||0).toFixed(2); }
+function fmtKm1(km){ return (km||0).toFixed(1); }
+function fmtPace(minPerKm){
+  if(!minPerKm || !isFinite(minPerKm) || minPerKm<=0) return "–'–\"";
+  const m = Math.floor(minPerKm), s = Math.round((minPerKm-m)*60);
+  return `${m}'${String(s).padStart(2,'0')}"`;
+}
+function fmtTimeShort(sec){
+  sec = Math.max(0, Math.round(sec||0));
+  const h=Math.floor(sec/3600), m=Math.floor((sec%3600)/60), s=sec%60;
+  if(h>0) return `${h}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+  return `${m}:${String(s).padStart(2,'0')}`;
+}
+function fmtTimeClock(sec){
+  sec = Math.max(0, Math.round(sec||0));
+  const h=Math.floor(sec/3600), m=Math.floor((sec%3600)/60), s=sec%60;
+  if(h>0) return `${h}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+  return `${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+}
+function haversineKm(lat1,lon1,lat2,lon2){
+  const R=6371, dLat=(lat2-lat1)*Math.PI/180, dLon=(lon2-lon1)*Math.PI/180;
+  const a=Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLon/2)**2;
+  return R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
+}
+function dateKey(d){ d=new Date(d); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
+function isoWeekKey(d){
+  const date = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+  const day = (date.getUTCDay()+6)%7;
+  date.setUTCDate(date.getUTCDate()-day+3);
+  const firstThu = new Date(Date.UTC(date.getUTCFullYear(),0,4));
+  const week = 1 + Math.round(((date-firstThu)/86400000 - 3 + ((firstThu.getUTCDay()+6)%7))/7);
+  return `${date.getUTCFullYear()}-W${week}`;
+}
+function startOfWeek(d){
+  const x = new Date(d); const day=(x.getDay()+6)%7; x.setHours(0,0,0,0); x.setDate(x.getDate()-day); return x;
+}
+function sameDay(a,b){ return a.getFullYear()===b.getFullYear() && a.getMonth()===b.getMonth() && a.getDate()===b.getDate(); }
+function uid(){ return 'r'+Date.now().toString(36)+Math.random().toString(36).slice(2,7); }
+function svgAreaPath(values, w, h){
+  if(!values || values.length<2) return {area:'', line:''};
+  const min=Math.min(...values), max=Math.max(...values), range=(max-min)||1;
+  const pts = values.map((v,i)=>{
+    const x = (i/(values.length-1))*w;
+    const y = h - ((v-min)/range)*h*0.86 - 4;
+    return [x,y];
+  });
+  let line = `M${pts[0][0]} ${pts[0][1]}`;
+  for(let i=1;i<pts.length;i++) line += ` L${pts[i][0]} ${pts[i][1]}`;
+  const area = `${line} L${w} ${h} L0 ${h} Z`;
+  return {area, line};
+}
+
+function toast(msg){
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(toast._t);
+  toast._t = setTimeout(()=>t.classList.remove('show'), 2600);
+}
+function announce(msg){
+  const el = document.getElementById('live-announcer');
+  el.textContent = '';
+  requestAnimationFrame(()=>{ el.textContent = msg; });
+}
+
+/* ===================== today's target ===================== */
+function getTodayEntry(){
+  const key = dateKey(new Date());
+  return state.dailyTargets.find(t=>t.dateKey===key) || null;
+}
+function setTodayTarget(km, preference, condition){
+  const key = dateKey(new Date());
+  let entry = state.dailyTargets.find(t=>t.dateKey===key);
+  if(entry){ entry.km=km; entry.preference=preference; entry.condition=condition; }
+  else { entry = {dateKey:key, km, preference, condition}; state.dailyTargets.push(entry); }
+  persistTargets();
+  return entry;
+}
+function weekTargetsSum(){
+  const from = startOfWeek(new Date()); const to = new Date(from); to.setDate(to.getDate()+7);
+  const sum = state.dailyTargets
+    .filter(t=>{ const d=new Date(t.dateKey); return d>=from && d<to; })
+    .reduce((s,t)=>s+t.km,0);
+  return sum>0 ? sum : 20;
+}
+function effectiveTarget(){
+  const today = getTodayEntry();
+  if(today) return today;
+  const remaining = Math.max(3, weekTargetsSum() - sumKm(currentWeekRuns()));
+  return {km: +remaining.toFixed(1), preference:'any', condition:'normal'};
+}
+
+/* ===================== derived stats ===================== */
+function runsInRange(from, to){
+  return state.runs.filter(r=>{ const d=new Date(r.dateISO); return d>=from && d<to; });
+}
+function currentMonthRuns(){
+  const now=new Date();
+  return runsInRange(new Date(now.getFullYear(), now.getMonth(), 1), new Date(now.getFullYear(), now.getMonth()+1, 1));
+}
+function currentYearRuns(){
+  const now=new Date();
+  return runsInRange(new Date(now.getFullYear(),0,1), new Date(now.getFullYear()+1,0,1));
+}
+function currentWeekRuns(){
+  const from=startOfWeek(new Date()); const to=new Date(from); to.setDate(to.getDate()+7);
+  return runsInRange(from,to);
+}
+function sumKm(list){ return list.reduce((s,r)=>s+r.distanceKm,0); }
+function sumSec(list){ return list.reduce((s,r)=>s+r.durationSec,0); }
+function avgPace(list){
+  const km=sumKm(list), sec=sumSec(list);
+  if(km<=0) return 0;
+  return (sec/60)/km;
+}
+function computeStreak(){
+  const days = [...new Set(state.runs.map(r=>{ const d=new Date(r.dateISO); d.setHours(0,0,0,0); return d.getTime(); }))].sort((a,b)=>b-a);
+  if(days.length===0) return 0;
+  let streak=0;
+  let cursor = new Date(); cursor.setHours(0,0,0,0);
+  if(days[0] !== cursor.getTime()){
+    const yesterday = new Date(cursor); yesterday.setDate(yesterday.getDate()-1);
+    if(days[0] !== yesterday.getTime()) return 0;
+    cursor = yesterday;
+  }
+  for(const d of days){
+    if(d === cursor.getTime()){ streak++; cursor.setDate(cursor.getDate()-1); }
+    else if(d < cursor.getTime()) break;
+  }
+  return streak;
+}
+const DIFF_RANK = {'입문':1,'중급':2,'상급':3};
+const COND_RANK = {good:3, normal:2, tired:1};
+function matchCourses(targetKm, preference, condition, limit){
+  const condRank = COND_RANK[condition] ?? 2;
+  const scored = state.courses.map(c=>{
+    let score = Math.abs(c.distanceKm-targetKm)*2;
+    if(preference==='flat' && c.type!=='flat') score += 3;
+    if(preference==='hill' && c.type!=='hill') score += 3;
+    score += Math.abs((DIFF_RANK[c.difficulty]||2)-condRank)*1.4;
+    if(condition==='tired' && c.type==='hill') score += 2.2;
+    return {course:c, score};
+  });
+  scored.sort((a,b)=>a.score-b.score);
+  return scored.slice(0, limit||scored.length).map(s=>s.course);
+}
+
+/* ===================== training plan ===================== */
+const PLAN_TEMPLATE = [
+  {dow:1, label:'인터벌', ratio:0.15},
+  {dow:3, label:'회복런', ratio:0.20},
+  {dow:5, label:'템포런', ratio:0.20},
+  {dow:0, label:'롱런', ratio:0.35}
+];
+function ensurePlan(){
+  const wk = isoWeekKey(new Date());
+  if(state.plan.weekKey === wk && state.plan.items && state.plan.items.length) return;
+  const weekTarget = weekTargetsSum();
+  const monday = startOfWeek(new Date());
+  const items = PLAN_TEMPLATE.map((t,i)=>{
+    const d = new Date(monday);
+    const offset = t.dow===0 ? 6 : t.dow-1;
+    d.setDate(d.getDate()+offset);
+    const km = Math.max(2, Math.round(weekTarget*t.ratio));
+    return {id:'p'+i, dateISO:d.toISOString(), label:t.label, targetKm:km, completed:false, linkedRunId:null};
+  });
+  state.plan = {weekKey:wk, items};
+  persistPlan();
+}
+function dayLabel(d){
+  const names=['일','월','화','수','목','금','토'];
+  return `${names[d.getDay()]} · ${d.getMonth()+1}/${d.getDate()}`;
+}
+function togglePlanItem(id){
+  const item = state.plan.items.find(p=>p.id===id);
+  if(!item) return;
+  if(!item.completed){
+    const run = {
+      id: uid(), dateISO: new Date().toISOString(), distanceKm: item.targetKm,
+      durationSec: Math.round(item.targetKm*5.5*60), avgPaceMin: 5.5,
+      elevationGain: 5, type:'flat', courseName: `플랜 완료 · ${item.label}`,
+      source:'plan', points: [], splits: [], elevationProfile: []
+    };
+    state.runs.push(run);
+    item.completed = true; item.linkedRunId = run.id;
+    persistRuns();
+    announce(`${item.label} 완료. 진척에 반영되었습니다.`);
+  } else {
+    state.runs = state.runs.filter(r=>r.id!==item.linkedRunId);
+    item.completed = false; item.linkedRunId = null;
+    persistRuns();
+  }
+  persistPlan();
+  renderAll();
+}
+
+/* ===================== router / nav ===================== */
+const SCREENS = ['home','run','detail','history','goals','social'];
+let currentScreen = 'home';
+function showScreen(name, opts){
+  opts = opts || {};
+  currentScreen = name;
+  SCREENS.forEach(s=>{
+    document.getElementById('screen-'+s).classList.toggle('active', s===name);
+  });
+  document.querySelectorAll('.navbtn[data-screen]').forEach(b=>{
+    if(b.dataset.screen===name) b.setAttribute('aria-current','page');
+    else b.removeAttribute('aria-current');
+  });
+  if(name==='home') renderHome();
+  if(name==='history') renderHistory();
+  if(name==='goals') renderGoals();
+  if(name==='social') renderSocial();
+  if(name==='detail' && opts.runId) renderDetail(opts.runId);
+  document.getElementById('main').scrollTop = 0;
+  window.scrollTo(0,0);
+}
+document.querySelectorAll('.navbtn[data-screen]').forEach(b=>{
+  b.addEventListener('click', ()=>showScreen(b.dataset.screen));
+});
+
+/* ===================== shared bits ===================== */
+function courseChips(c){
+  const typeChip = c.type==='hill'
+    ? `<span class="chip chip-teal">${icon('mountain',13)} 언덕 · +${c.elevationGain}m</span>`
+    : `<span class="chip chip-teal">${icon('road',13)} 평지</span>`;
+  return `${typeChip}<span class="chip chip-dim">${c.difficulty}</span><span class="chip chip-dim">${c.distanceKm.toFixed(1)} KM</span>`;
+}
+function courseThumb(c){
+  if(!c.route || c.route.length<2) return '';
+  const lats=c.route.map(p=>p.lat), lngs=c.route.map(p=>p.lng);
+  const minLat=Math.min(...lats), maxLat=Math.max(...lats)||minLat+0.0001;
+  const minLng=Math.min(...lngs), maxLng=Math.max(...lngs)||minLng+0.0001;
+  const path = c.route.map(p=>{
+    const x = 6 + ((p.lng-minLng)/((maxLng-minLng)||1))*54;
+    const y = 54 - ((p.lat-minLat)/((maxLat-minLat)||1))*44 - 5;
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  }).join(' ');
+  return `<svg width="66" height="60" viewBox="0 0 66 60"><polyline points="${path}" fill="none" stroke="#21afbf" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+}
+
+/* ===================== HOME render ===================== */
+function renderHome(){
+  document.getElementById('streakVal').textContent = computeStreak();
+
+  const weekKm = sumKm(currentWeekRuns());
+  const wTarget = weekTargetsSum();
+  const wPct = wTarget>0 ? Math.min(100, Math.round(weekKm/wTarget*100)) : 0;
+  document.getElementById('weekProgressText').textContent = `${fmtKm1(weekKm)} / ${fmtKm1(wTarget)} KM`;
+  document.getElementById('homeRingPct').textContent = wPct+'%';
+  const circumference = 2*Math.PI*27;
+  const ring = document.getElementById('homeRingProgress');
+  ring.setAttribute('stroke-dasharray', circumference);
+  ring.setAttribute('stroke-dashoffset', circumference*(1-wPct/100));
+
+  const activeRun = getActiveRun();
+  const heroBtn = document.getElementById('startBtn');
+  const heroLabel = document.getElementById('heroCoreLabel');
+  if(activeRun){
+    heroLabel.textContent = activeRun.paused ? '일시정지됨 · 계속 보기' : '진행 중 · 계속 보기';
+    heroBtn.classList.add('active');
+  } else {
+    heroLabel.textContent = '오늘의 러닝 시작';
+    heroBtn.classList.remove('active');
+  }
+
+  const monthRuns = currentMonthRuns();
+  document.getElementById('statMonthKm').textContent = fmtKm1(sumKm(monthRuns));
+  document.getElementById('statAvgPace').textContent = fmtPace(avgPace(monthRuns));
+  document.getElementById('statYearKm').textContent = Math.round(sumKm(currentYearRuns()));
+
+  const goalCta = document.getElementById('homeGoalCta');
+  const hasToday = !!getTodayEntry();
+  goalCta.style.display = hasToday ? 'none' : 'block';
+  document.getElementById('homeRecLabel').textContent = hasToday ? '오늘 목표 기반 추천 코스' : '추천 코스';
+
+  const target = effectiveTarget();
+  const course = matchCourses(target.km, target.preference, target.condition, 1)[0];
+  document.getElementById('homeRecCourseBody').innerHTML = course ? `
+    <div style="display:flex;gap:14px;align-items:center">
+      <div style="width:66px;height:60px;flex:none;border-radius:var(--r-md);overflow:hidden;background:var(--surface);display:flex;align-items:center;justify-content:center">${courseThumb(course)}</div>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:16px;font-weight:700;color:var(--ink)">${course.name}</div>
+        <div class="chip-group" style="margin-top:8px">${courseChips(course)}</div>
+      </div>
+    </div>` : `<p style="color:var(--faint);font-size:13px">추천할 코스가 없습니다.</p>`;
+  document.getElementById('homeRecCourseCard').onclick = ()=>{ if(course) openCourseModal(course.id); };
+
+  const recent = [...state.runs].sort((a,b)=>new Date(b.dateISO)-new Date(a.dateISO)).slice(0,3);
+  const listEl = document.getElementById('homeRecentList');
+  listEl.innerHTML = recent.length ? recent.map(runRowHtml).join('') : `<div class="empty">${icon('activity',30)}첫 러닝을 시작해보세요</div>`;
+  bindRunRows(listEl);
+  paintIcons();
+}
+
+function runRowHtml(r){
+  const d = new Date(r.dateISO);
+  const typeTag = r.source==='plan' ? `${icon('check',13)} 플랜 완료` :
+    (r.type==='hill' ? `${icon('mountain',13)} 언덕` : `${icon('road',13)} 평지`);
+  return `<button class="run-row" data-run-id="${r.id}" type="button">
+    <div class="thumb">${routeSvgThumb(r)}</div>
+    <div class="mid">
+      <div class="t">${r.courseName||'자유 러닝'}</div>
+      <div class="s">${d.getMonth()+1}/${d.getDate()} · ${typeTag}</div>
+    </div>
+    <div class="right"><div class="d tabular">${fmtKm(r.distanceKm)}</div><div class="p tabular">${fmtPace(r.avgPaceMin)}</div></div>
+  </button>`;
+}
+function routeSvgThumb(r){
+  if(r.points && r.points.length>1){
+    const lats=r.points.map(p=>p.lat), lngs=r.points.map(p=>p.lng);
+    const minLat=Math.min(...lats), maxLat=Math.max(...lats)||minLat+0.0001;
+    const minLng=Math.min(...lngs), maxLng=Math.max(...lngs)||minLng+0.0001;
+    const path = r.points.map(p=>{
+      const x = 6 + ((p.lng-minLng)/((maxLng-minLng)||1))*40;
+      const y = 46 - ((p.lat-minLat)/((maxLat-minLat)||1))*40;
+      return `${x.toFixed(1)},${y.toFixed(1)}`;
+    }).join(' ');
+    return `<svg width="52" height="52" viewBox="0 0 52 52"><polyline points="${path}" fill="none" stroke="#21afbf" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+  }
+  return icon('check',18);
+}
+function bindRunRows(container){
+  container.querySelectorAll('[data-run-id]').forEach(el=>{
+    el.addEventListener('click', ()=>showScreen('detail', {runId: el.dataset.runId}));
+  });
+}
+
+/* ===================== HISTORY render ===================== */
+let historySelectedMonth = null;
+function renderHistory(){
+  const months = [...new Set(state.runs.map(r=>{ const d=new Date(r.dateISO); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`; }))].sort().reverse();
+  const now = new Date();
+  const currentKey = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+  if(!months.includes(currentKey)) months.unshift(currentKey);
+  if(!historySelectedMonth) historySelectedMonth = currentKey;
+
+  const sel = document.getElementById('historyMonthSelect');
+  sel.innerHTML = months.map(m=>{
+    const [y,mo]=m.split('-');
+    return `<option value="${m}" ${m===historySelectedMonth?'selected':''}>${y}년 ${+mo}월</option>`;
+  }).join('');
+  sel.onchange = ()=>{ historySelectedMonth = sel.value; renderHistory(); };
+
+  const [y,mo] = historySelectedMonth.split('-').map(Number);
+  const from = new Date(y, mo-1, 1), to = new Date(y, mo, 1);
+  const monthRuns = runsInRange(from,to).sort((a,b)=>new Date(b.dateISO)-new Date(a.dateISO));
+
+  document.getElementById('histMonthKm').textContent = fmtKm1(sumKm(monthRuns));
+  document.getElementById('histMonthTime').textContent = fmtTimeClock(sumSec(monthRuns));
+  document.getElementById('histMonthCount').textContent = monthRuns.length;
+
+  const listEl = document.getElementById('historyList');
+  listEl.innerHTML = monthRuns.length ? monthRuns.map(runRowHtml).join('') :
+    `<div class="empty">${icon('inbox',30)}이 달의 기록이 없습니다</div>`;
+  bindRunRows(listEl);
+  paintIcons();
+}
+
+/* ===================== DETAIL render ===================== */
+let detailMapInstance = null;
+function renderDetail(runId){
+  const r = state.runs.find(x=>x.id===runId);
+  if(!r){ showScreen('history'); return; }
+  const d = new Date(r.dateISO);
+  document.getElementById('detailDateLabel').textContent = `${d.getMonth()+1}월 ${d.getDate()}일 · ${d.getHours()<12?'오전':'오후'} 러닝`;
+  document.getElementById('detailTitleLabel').textContent = `${r.courseName||'자유 러닝'} 완주`;
+  document.getElementById('detailKm').textContent = fmtKm(r.distanceKm);
+  document.getElementById('detailTime').textContent = fmtTimeClock(r.durationSec);
+  document.getElementById('detailPace').textContent = fmtPace(r.avgPaceMin);
+  document.getElementById('detailElev').textContent = Math.round(r.elevationGain||0);
+
+  const mapEl = document.getElementById('detailMap');
+  if(detailMapInstance){ detailMapInstance.remove(); detailMapInstance=null; }
+  let ph = document.getElementById('detailMapPlaceholder');
+  if(ph) ph.remove();
+  if(r.points && r.points.length>1){
+    mapEl.style.display='block';
+    detailMapInstance = L.map(mapEl, {zoomControl:false, attributionControl:false, dragging:true, scrollWheelZoom:false});
+    const latlngs = r.points.map(p=>[p.lat,p.lng]);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19}).addTo(detailMapInstance);
+    const line = L.polyline(latlngs, {color:'#21afbf', weight:4}).addTo(detailMapInstance);
+    L.circleMarker(latlngs[0], {radius:6, color:'#fff', weight:2, fillColor:'#21afbf', fillOpacity:1}).addTo(detailMapInstance);
+    L.circleMarker(latlngs[latlngs.length-1], {radius:6, color:'#fff', weight:2, fillColor:'#16181d', fillOpacity:1}).addTo(detailMapInstance);
+    detailMapInstance.fitBounds(line.getBounds(), {padding:[24,24]});
+    setTimeout(()=>detailMapInstance && detailMapInstance.invalidateSize(), 60);
+  } else {
+    mapEl.style.display='none';
+    mapEl.insertAdjacentHTML('afterend', `<div class="map-placeholder" id="detailMapPlaceholder">${icon('map-pin',26)}이 기록에는 GPS 경로 데이터가 없습니다</div>`);
+    paintIcons();
+  }
+
+  const splitsEl = document.getElementById('detailSplits');
+  const splitsCard = document.getElementById('detailSplitsCard');
+  if(r.splits && r.splits.length){
+    splitsCard.style.display='block';
+    const paces = r.splits.map(s=>s.paceMin);
+    const minP = Math.min(...paces), maxP = Math.max(...paces)||minP+1;
+    splitsEl.innerHTML = r.splits.map((s,i)=>{
+      const h = 20 + (1-(s.paceMin-minP)/((maxP-minP)||1))*52;
+      const fast = s.paceMin <= (minP+maxP)/2;
+      return `<div class="col"><div class="bar ${fast?'fast':''}" style="height:${h.toFixed(0)}px"></div><span class="num">${i+1}</span></div>`;
+    }).join('');
+  } else { splitsCard.style.display='none'; }
+
+  const elevCard = document.getElementById('detailElevCard');
+  const elevSvg = document.getElementById('detailElevSvg');
+  document.getElementById('detailElevLabel').textContent = `고도 프로파일 · +${Math.round(r.elevationGain||0)}m`;
+  if(r.elevationProfile && r.elevationProfile.length>1){
+    elevCard.style.display='block';
+    const {area,line} = svgAreaPath(r.elevationProfile, 300, 56);
+    elevSvg.innerHTML = `<defs><linearGradient id="eg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#21afbf" stop-opacity=".3"/><stop offset="1" stop-color="#21afbf" stop-opacity="0"/></linearGradient></defs><path d="${area}" fill="url(#eg)"/><path d="${line}" fill="none" stroke="#21afbf" stroke-width="2.5"/>`;
+  } else { elevCard.style.display='none'; }
+}
+document.getElementById('detailBackBtn').addEventListener('click', ()=>showScreen('history'));
+
+/* ===================== GOALS render ===================== */
+let uiTargetPref = 'any', uiTargetCond = 'normal';
+const PREF_OPTIONS = [{v:'any',l:'상관없음'},{v:'flat',l:'평지 위주'},{v:'hill',l:'언덕 포함'}];
+const COND_OPTIONS = [{v:'good',l:'컨디션 좋음'},{v:'normal',l:'보통'},{v:'tired',l:'힘듦'}];
+
+function renderGoals(){
+  ensurePlan();
+  const today = getTodayEntry();
+  uiTargetPref = today ? today.preference : uiTargetPref;
+  uiTargetCond = today ? today.condition : uiTargetCond;
+  document.getElementById('todayTargetInput').value = today ? today.km : '';
+
+  const prefGroup = document.getElementById('prefChipGroup');
+  prefGroup.innerHTML = PREF_OPTIONS.map(o=>`<button type="button" class="chip-toggle" data-pref="${o.v}" aria-pressed="${uiTargetPref===o.v}">${o.l}</button>`).join('');
+  prefGroup.querySelectorAll('[data-pref]').forEach(b=>b.addEventListener('click', ()=>{
+    uiTargetPref=b.dataset.pref;
+    prefGroup.querySelectorAll('[data-pref]').forEach(x=>x.setAttribute('aria-pressed', String(x.dataset.pref===uiTargetPref)));
+    renderCourseList();
+  }));
+
+  const condGroup = document.getElementById('condChipGroup');
+  condGroup.innerHTML = COND_OPTIONS.map(o=>`<button type="button" class="chip-toggle" data-cond="${o.v}" aria-pressed="${uiTargetCond===o.v}">${o.l}</button>`).join('');
+  condGroup.querySelectorAll('[data-cond]').forEach(b=>b.addEventListener('click', ()=>{
+    uiTargetCond=b.dataset.cond;
+    condGroup.querySelectorAll('[data-cond]').forEach(x=>x.setAttribute('aria-pressed', String(x.dataset.cond===uiTargetCond)));
+    renderCourseList();
+  }));
+
+  document.getElementById('todayTargetInput').oninput = renderCourseList;
+
+  renderCourseList();
+
+  const planEl = document.getElementById('planList');
+  const todayDate = new Date();
+  planEl.innerHTML = state.plan.items.map(p=>{
+    const d = new Date(p.dateISO);
+    const isToday = sameDay(d, todayDate);
+    const cls = p.completed ? 'done' : (isToday ? 'today' : 'todo');
+    return `<div class="plan-item">
+      <button class="plan-check ${cls}" data-plan-id="${p.id}" type="button" aria-label="${p.label} ${p.completed?'완료 취소':'완료 처리'}">${p.completed?icon('check',14):''}</button>
+      <div style="flex:1;font-size:14px;font-weight:${p.completed?500:700};color:${p.completed?'var(--faint)':'var(--ink)'};text-decoration:${p.completed?'line-through':'none'}">${dayLabel(d)} · ${p.label} ${p.targetKm}K</div>
+      <span style="font-size:12px;font-weight:600;color:${p.completed?'var(--muted)':(isToday?'var(--teal-deep)':'var(--faint)')}">${p.completed?'완료':(isToday?'오늘':'예정')}</span>
+    </div>`;
+  }).join('');
+  planEl.querySelectorAll('[data-plan-id]').forEach(btn=>{
+    btn.addEventListener('click', ()=>togglePlanItem(btn.dataset.planId));
+  });
+  paintIcons();
+}
+
+function currentInputTargetKm(){
+  const raw = parseFloat(document.getElementById('todayTargetInput').value);
+  return (raw && raw>0) ? raw : effectiveTarget().km;
+}
+function renderCourseList(){
+  const targetKm = currentInputTargetKm();
+  const list = matchCourses(targetKm, uiTargetPref, uiTargetCond, 4);
+  const coursesEl = document.getElementById('coursesList');
+  coursesEl.innerHTML = list.map((c,i)=>{
+    const {area,line} = svgAreaPath(c.profile, 300, 40);
+    return `<button class="course-card" data-course-id="${c.id}" type="button">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <div style="font-size:16px;font-weight:700;color:var(--ink)">${c.name}</div>
+        ${i===0?'<span class="match">최적 매치</span>':''}
+      </div>
+      <div class="chip-group">${courseChips(c)}</div>
+      <svg width="100%" height="40" viewBox="0 0 300 40" preserveAspectRatio="none" aria-hidden="true"><path d="${area}" fill="#21afbf" fill-opacity=".14"/><path d="${line}" fill="none" stroke="#21afbf" stroke-width="2"/></svg>
+    </button>`;
+  }).join('');
+  coursesEl.querySelectorAll('[data-course-id]').forEach(btn=>{
+    btn.addEventListener('click', ()=>openCourseModal(btn.dataset.courseId));
+  });
+}
+
+document.getElementById('applyTargetBtn').addEventListener('click', ()=>{
+  const v = parseFloat(document.getElementById('todayTargetInput').value);
+  if(!v || v<=0){ toast('오늘 목표 거리를 입력해주세요'); return; }
+  setTodayTarget(v, uiTargetPref, uiTargetCond);
+  toast(`오늘 목표 ${v}KM로 코스를 추천했습니다`);
+  renderAll();
+  renderCourseList();
+});
+
+/* ===================== course preview modal ===================== */
+let courseModalMapInstance = null;
+let courseModalCourseId = null;
+function openCourseModal(courseId){
+  const c = state.courses.find(x=>x.id===courseId);
+  if(!c) return;
+  courseModalCourseId = courseId;
+  document.getElementById('courseModalName').textContent = c.name;
+  document.getElementById('courseModalChips').innerHTML = courseChips(c);
+  const {area,line} = svgAreaPath(c.profile, 300, 44);
+  document.getElementById('courseModalElevSvg').innerHTML = `<path d="${area}" fill="#21afbf" fill-opacity=".14"/><path d="${line}" fill="none" stroke="#21afbf" stroke-width="2.2"/>`;
+
+  const mapEl = document.getElementById('courseModalMap');
+  if(courseModalMapInstance){ courseModalMapInstance.remove(); courseModalMapInstance=null; }
+  document.getElementById('courseModal').classList.add('active');
+  setTimeout(()=>{
+    courseModalMapInstance = L.map(mapEl, {zoomControl:false, attributionControl:false, dragging:false, scrollWheelZoom:false});
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19}).addTo(courseModalMapInstance);
+    const latlngs = c.route.map(p=>[p.lat,p.lng]);
+    const line2 = L.polyline(latlngs, {color:'#21afbf', weight:4}).addTo(courseModalMapInstance);
+    L.circleMarker(latlngs[0], {radius:6, color:'#fff', weight:2, fillColor:'#21afbf', fillOpacity:1}).addTo(courseModalMapInstance);
+    courseModalMapInstance.fitBounds(line2.getBounds(), {padding:[20,20]});
+    courseModalMapInstance.invalidateSize();
+  }, 50);
+  paintIcons();
+}
+document.getElementById('courseModalClose').addEventListener('click', ()=>document.getElementById('courseModal').classList.remove('active'));
+document.getElementById('courseModalStartBtn').addEventListener('click', ()=>{
+  const c = state.courses.find(x=>x.id===courseModalCourseId);
+  document.getElementById('courseModal').classList.remove('active');
+  startRun(c);
+});
+
+/* ===================== SOCIAL render ===================== */
+function renderSocial(){
+  const monthKm = sumKm(currentMonthRuns());
+  document.getElementById('challengeKm').textContent = fmtKm1(monthKm);
+  document.getElementById('challengeBar').style.width = Math.min(100, monthKm).toFixed(0)+'%';
+
+  const board = [...state.friends.map(f=>({name:f.name, km:f.km, color:f.color, me:false})), {name:'나 · 지훈', km:monthKm, color:'#21afbf', me:true}];
+  board.sort((a,b)=>b.km-a.km);
+  const myRank = board.findIndex(b=>b.me)+1;
+  document.getElementById('myRankChip').textContent = `내 순위 #${myRank}`;
+
+  document.getElementById('leaderboardList').innerHTML = board.map((b,i)=>`
+    <div class="leaderboard-row ${b.me?'me':''}">
+      <span class="tabular" style="font-size:15px;font-weight:700;color:${b.me?'var(--teal-deep)':'var(--muted)'};width:20px">${i+1}</span>
+      <div class="avatar" style="background:${b.color}">${b.name.replace('나 · ','').slice(0,2)}</div>
+      <div style="flex:1;font-size:14px;font-weight:600;color:${b.me?'var(--teal-deep)':'var(--ink)'}">${b.name}</div>
+      <span class="tabular" style="font-size:15px;font-weight:700;color:${b.me?'var(--teal-deep)':'var(--ink)'}">${fmtKm1(b.km)}</span>
+    </div>`).join('');
+}
+
+function renderAll(){
+  if(currentScreen==='home') renderHome();
+  if(currentScreen==='history') renderHistory();
+  if(currentScreen==='goals') renderGoals();
+  if(currentScreen==='social') renderSocial();
+}
+
+/* ===================== RUN TRACKING (F1) ===================== */
+let tracker = null;
+let uiTimer = null;
+
+function getActiveRun(){ return tracker; }
+
+function startRun(forcedCourse){
+  if(tracker) { showScreen('run'); return; }
+  const target = effectiveTarget();
+  const course = forcedCourse || matchCourses(target.km, target.preference, target.condition, 1)[0];
+  tracker = {
+    startTime: Date.now(), pausedTotalMs:0, pauseStartedAt:null, paused:false,
+    points: [], watchId:null, simTimer:null, hr:135, courseTarget: course, simulated:false, lastAnnouncedKm:0
+  };
+  document.getElementById('runCourseLabel').textContent = course ? course.name : '자유 러닝';
+  document.getElementById('runTargetPill').style.display = course ? 'block' : 'none';
+  document.getElementById('gpsStatusText').textContent = '실시간 · GPS 탐색 중';
+  document.getElementById('liveBadge').classList.remove('demo');
+  document.getElementById('runPauseBtn').innerHTML = icon('pause',26);
+  document.getElementById('runLockBtn').innerHTML = icon('lock',22);
+  document.getElementById('runStopBtn').innerHTML = icon('stop',22);
+  document.getElementById('hrIcon').innerHTML = icon('heart',13);
+  showScreen('run');
+  beginPositionSource();
+  uiTimer = setInterval(updateRunUI, 1000);
+  updateRunUI();
+  announce('러닝을 시작했습니다');
+}
+
+function beginPositionSource(){
+  if(!('geolocation' in navigator)){ fallbackSimulate('이 브라우저는 위치 서비스를 지원하지 않아 데모 모드로 진행합니다'); return; }
+  tracker.watchId = navigator.geolocation.watchPosition(
+    pos=>{
+      document.getElementById('gpsStatusText').textContent = '실시간 · GPS 정확';
+      addPoint(pos.coords.latitude, pos.coords.longitude, pos.coords.altitude);
+    },
+    err=>{ fallbackSimulate('GPS 신호를 찾을 수 없어 데모 모드로 전환합니다'); },
+    {enableHighAccuracy:true, timeout:8000, maximumAge:2000}
+  );
+}
+function fallbackSimulate(msg){
+  if(tracker.simulated) return;
+  if(tracker.watchId!=null){ navigator.geolocation.clearWatch(tracker.watchId); tracker.watchId=null; }
+  tracker.simulated = true;
+  document.getElementById('gpsStatusText').textContent = '데모 모드 · 시뮬레이션';
+  document.getElementById('liveBadge').classList.add('demo');
+  toast(msg);
+  const startBase = tracker.courseTarget && tracker.courseTarget.base ? tracker.courseTarget.base : {lat:37.5326,lng:126.9905};
+  let lat=startBase.lat, lng=startBase.lng, bearing=Math.random()*Math.PI*2, t=0;
+  const gain = tracker.courseTarget ? tracker.courseTarget.elevationGain : 20;
+  tracker.simTimer = setInterval(()=>{
+    if(tracker.paused) return;
+    bearing += (Math.random()-0.5)*0.35;
+    const stepKm = 0.0028 + (Math.random()-0.5)*0.0006;
+    const dLat = (stepKm/111.32)*Math.cos(bearing);
+    const dLng = (stepKm/(111.32*Math.cos(lat*Math.PI/180)))*Math.sin(bearing);
+    lat += dLat; lng += dLng; t++;
+    const alt = 20 + Math.sin(t/40)*(gain/2) + Math.sin(t/11)*2;
+    addPoint(lat, lng, alt);
+  }, 1000);
+}
+function addPoint(lat,lng,alt){
+  if(!tracker || tracker.paused) return;
+  const prev = tracker.points[tracker.points.length-1];
+  if(prev){
+    const d = haversineKm(prev.lat, prev.lng, lat, lng);
+    if(d > 0.3) return;
+  }
+  tracker.points.push({lat,lng,alt: (typeof alt==='number'?alt:null), t:Date.now()});
+}
+function trackerDistanceKm(){
+  const pts = tracker.points;
+  let km=0;
+  for(let i=1;i<pts.length;i++) km += haversineKm(pts[i-1].lat,pts[i-1].lng,pts[i].lat,pts[i].lng);
+  return km;
+}
+function trackerElapsedSec(){
+  const pausedExtra = tracker.paused ? (Date.now()-tracker.pauseStartedAt) : 0;
+  return (Date.now() - tracker.startTime - tracker.pausedTotalMs - pausedExtra)/1000;
+}
+function updateRunUI(){
+  if(!tracker) return;
+  const km = trackerDistanceKm();
+  const sec = trackerElapsedSec();
+  const pace = km>0 ? (sec/60)/km : 0;
+
+  tracker.hr = Math.max(100, Math.min(178, tracker.hr + (pace>0 && pace<5.5 ? (Math.random()*3-0.5) : (Math.random()*2-1))));
+
+  document.getElementById('runDistance').textContent = fmtKm(km);
+  document.getElementById('runPace').textContent = fmtPace(pace);
+  document.getElementById('runTime').textContent = fmtTimeShort(sec);
+  document.getElementById('runHr').innerHTML = `${icon('heart',13)}${Math.round(tracker.hr)}`;
+
+  if(tracker.courseTarget){
+    const targetD = tracker.courseTarget.distanceKm;
+    const remain = Math.max(0, targetD-km);
+    const pct = Math.min(100, Math.round(km/targetD*100));
+    document.getElementById('runTargetPill').textContent = `목표까지 ${remain.toFixed(2)} KM · ${pct}%`;
+  }
+  const kmFloor = Math.floor(km);
+  if(kmFloor > tracker.lastAnnouncedKm){
+    tracker.lastAnnouncedKm = kmFloor;
+    announce(`${kmFloor}킬로미터 통과. 페이스 ${fmtPace(pace)}`);
+  }
+}
+
+function computeSplitsAndElevation(){
+  const pts = tracker.points;
+  const splits = [];
+  let cumKm=0, lastT=tracker.startTime, lastKmBoundary=0;
+  for(let i=1;i<pts.length;i++){
+    cumKm += haversineKm(pts[i-1].lat,pts[i-1].lng,pts[i].lat,pts[i].lng);
+    if(cumKm - lastKmBoundary >= 1){
+      const elapsedMin = (pts[i].t - lastT)/60000;
+      splits.push({paceMin: elapsedMin});
+      lastT = pts[i].t; lastKmBoundary = Math.floor(cumKm);
+    }
+  }
+  const alts = pts.map(p=>p.alt).filter(a=>typeof a==='number');
+  let elevationGain=0;
+  for(let i=1;i<alts.length;i++){ const diff=alts[i]-alts[i-1]; if(diff>0) elevationGain+=diff; }
+  let elevationProfile = [];
+  if(alts.length>2){
+    const step = Math.max(1, Math.floor(alts.length/20));
+    for(let i=0;i<alts.length;i+=step) elevationProfile.push(alts[i]);
+  }
+  return {splits, elevationGain: Math.round(elevationGain), elevationProfile};
+}
+
+function stopRun(){
+  if(!tracker) return;
+  clearInterval(uiTimer); uiTimer=null;
+  if(tracker.watchId!=null) navigator.geolocation.clearWatch(tracker.watchId);
+  if(tracker.simTimer) clearInterval(tracker.simTimer);
+
+  const km = trackerDistanceKm();
+  const sec = trackerElapsedSec();
+  if(km < 0.03){
+    tracker = null; showScreen('home'); return;
+  }
+  const {splits, elevationGain, elevationProfile} = computeSplitsAndElevation();
+  const run = {
+    id: uid(), dateISO: new Date(tracker.startTime).toISOString(),
+    distanceKm: +km.toFixed(3), durationSec: Math.round(sec),
+    avgPaceMin: km>0 ? (sec/60)/km : 0,
+    elevationGain, type: elevationGain>60 ? 'hill' : 'flat',
+    courseName: tracker.courseTarget ? tracker.courseTarget.name : '자유 러닝',
+    source:'gps', simulated: tracker.simulated,
+    points: tracker.points.map(p=>({lat:p.lat,lng:p.lng})),
+    splits, elevationProfile
+  };
+  state.runs.push(run);
+  persistRuns();
+  const finishedId = run.id;
+  tracker = null;
+  toast('러닝이 저장되었습니다');
+  renderAll();
+  showScreen('detail', {runId: finishedId});
+}
+
+document.getElementById('startBtn').addEventListener('click', ()=>startRun());
+document.getElementById('navStartBtn').addEventListener('click', ()=>startRun());
+document.getElementById('runPauseBtn').addEventListener('click', function(){
+  if(!tracker) return;
+  if(tracker.paused){
+    tracker.pausedTotalMs += Date.now()-tracker.pauseStartedAt;
+    tracker.paused=false; tracker.pauseStartedAt=null;
+    this.setAttribute('aria-label','일시정지');
+    this.innerHTML = icon('pause',26);
+    announce('러닝을 재개했습니다');
+  } else {
+    tracker.paused=true; tracker.pauseStartedAt=Date.now();
+    this.setAttribute('aria-label','재개');
+    this.innerHTML = icon('play',26);
+    announce('러닝을 일시정지했습니다');
+  }
+});
+document.getElementById('runStopBtn').addEventListener('click', function(){
+  if(!tracker) return;
+  if(confirm('러닝을 종료하고 기록을 저장할까요?')) stopRun();
+});
+document.getElementById('runLockBtn').addEventListener('click', ()=>{
+  document.getElementById('lockOverlay').classList.add('active');
+});
+(function initLockHold(){
+  const btn = document.getElementById('lockHoldBtn');
+  btn.innerHTML = icon('lock',24);
+  const ring = document.getElementById('lockRingProgress');
+  const CIRC = 327;
+  let holdRAF=null, holdStart=null;
+  function step(ts){
+    if(!holdStart) holdStart=ts;
+    const elapsed = ts-holdStart;
+    const pct = Math.min(1, elapsed/1500);
+    ring.setAttribute('stroke-dashoffset', CIRC*(1-pct));
+    if(pct>=1){
+      document.getElementById('lockOverlay').classList.remove('active');
+      ring.setAttribute('stroke-dashoffset', CIRC);
+      holdStart=null; return;
+    }
+    holdRAF = requestAnimationFrame(step);
+  }
+  function start(e){ e.preventDefault(); holdStart=null; holdRAF=requestAnimationFrame(step); }
+  function cancel(){ if(holdRAF) cancelAnimationFrame(holdRAF); holdRAF=null; holdStart=null; ring.setAttribute('stroke-dashoffset', CIRC); }
+  btn.addEventListener('pointerdown', start);
+  btn.addEventListener('pointerup', cancel);
+  btn.addEventListener('pointerleave', cancel);
+})();
+
+/* ===================== EXCEL BACKUP ===================== */
+document.getElementById('exportBtn').addEventListener('click', ()=>{
+  const wb = XLSX.utils.book_new();
+  const runsSheet = state.runs.map(r=>({
+    id:r.id, date:r.dateISO, courseName:r.courseName, distanceKm:r.distanceKm,
+    durationSec:r.durationSec, avgPaceMin:+((r.avgPaceMin||0).toFixed(2)), elevationGain:r.elevationGain,
+    type:r.type, source:r.source||'gps',
+    points_json: JSON.stringify(r.points||[]), splits_json: JSON.stringify(r.splits||[]), elevation_json: JSON.stringify(r.elevationProfile||[])
+  }));
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(runsSheet.length?runsSheet:[{}]), 'Runs');
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(state.dailyTargets.length?state.dailyTargets:[{}]), 'DailyTargets');
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(state.plan.items.map(p=>({...p}))), 'Plan');
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(state.courses.map(c=>({...c, profile_json: JSON.stringify(c.profile), route_json: JSON.stringify(c.route)}))), 'Courses');
+  const fname = `stride_backup_${new Date().toISOString().slice(0,10)}.xlsx`;
+  XLSX.writeFile(wb, fname);
+  toast('엑셀 백업 파일을 다운로드했습니다');
+});
+document.getElementById('importFile').addEventListener('change', function(e){
+  const file = e.target.files[0]; if(!file) return;
+  const reader = new FileReader();
+  reader.onload = evt=>{
+    try{
+      const wb = XLSX.read(evt.target.result, {type:'array'});
+      if(wb.SheetNames.includes('Runs')){
+        const rows = XLSX.utils.sheet_to_json(wb.Sheets['Runs']);
+        state.runs = rows.filter(r=>r.id).map(r=>({
+          id:r.id, dateISO:r.date, courseName:r.courseName, distanceKm:+r.distanceKm||0,
+          durationSec:+r.durationSec||0, avgPaceMin:+r.avgPaceMin||0, elevationGain:+r.elevationGain||0,
+          type:r.type||'flat', source:r.source||'gps',
+          points: safeParse(r.points_json,[]), splits: safeParse(r.splits_json,[]), elevationProfile: safeParse(r.elevation_json,[])
+        }));
+        persistRuns();
+      }
+      if(wb.SheetNames.includes('DailyTargets')){
+        const rows = XLSX.utils.sheet_to_json(wb.Sheets['DailyTargets']);
+        state.dailyTargets = rows.filter(r=>r.dateKey).map(r=>({dateKey:r.dateKey, km:+r.km||0, preference:r.preference||'any', condition:r.condition||'normal'}));
+        persistTargets();
+      }
+      if(wb.SheetNames.includes('Plan')){
+        const rows = XLSX.utils.sheet_to_json(wb.Sheets['Plan']);
+        if(rows.length){ state.plan = {weekKey: isoWeekKey(new Date()), items: rows.map(r=>({...r, completed: r.completed===true||r.completed==='TRUE'||r.completed===1}))}; persistPlan(); }
+      }
+      if(wb.SheetNames.includes('Courses')){
+        const rows = XLSX.utils.sheet_to_json(wb.Sheets['Courses']);
+        if(rows.length){ state.courses = ensureCourseRoutes(rows.map(r=>({...r, distanceKm:+r.distanceKm, elevationGain:+r.elevationGain, profile: safeParse(r.profile_json,[0,10,20,10]), route: safeParse(r.route_json,null)}))); persistCourses(); }
+      }
+      toast('백업 파일을 복원했습니다');
+      renderAll();
+      document.getElementById('backupModal').classList.remove('active');
+    }catch(err){ toast('파일을 읽는 중 오류가 발생했습니다'); }
+  };
+  reader.readAsArrayBuffer(file);
+  e.target.value='';
+});
+function safeParse(s, fallback){ try{ return s ? JSON.parse(s) : fallback; }catch(e){ return fallback; } }
+document.getElementById('backupModalCloseX').addEventListener('click', ()=>document.getElementById('backupModal').classList.remove('active'));
+document.getElementById('streakBadge').addEventListener('click', ()=>document.getElementById('backupModal').classList.add('active'));
+document.getElementById('streakBadge').addEventListener('keydown', (e)=>{ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); document.getElementById('backupModal').classList.add('active'); }});
+
+/* ===================== init ===================== */
+document.getElementById('streakIcon').innerHTML = icon('flame',14);
+ensurePlan();
+showScreen('home');
+paintIcons();
+})();
+</script>
+</body>
+</html>
